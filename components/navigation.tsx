@@ -3,11 +3,11 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { Home, Info, Activity } from 'lucide-react';
+import { Home, Info, Activity, Code } from 'lucide-react';
 
 const navItems = [
   {
-    name: 'Dashboard',
+    name: 'Blockchain',
     href: '/',
     icon: Home,
   },
@@ -15,6 +15,11 @@ const navItems = [
     name: 'Protocols',
     href: '/protocols',
     icon: Activity,
+  },
+  {
+    name: 'API Demo',
+    href: '/api-demo',
+    icon: Code,
   },
   {
     name: 'About',
@@ -32,8 +37,8 @@ export function Navigation() {
         <div className="flex h-16 items-center justify-between">
           <div className="flex items-center gap-6">
             <Link href="/" className="flex items-center gap-2 font-bold text-lg">
-              <span className="text-2xl">📊</span>
-              <span>AWS Outage Tracker</span>
+              <span className="text-2xl">⚡</span>
+              <span>Solana Outage Tracker</span>
             </Link>
             <div className="hidden md:flex items-center gap-1">
               {navItems.map((item) => {

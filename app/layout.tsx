@@ -15,9 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Solana Lending Protocols - AWS Outage Dashboard",
+  title: "Solana Blockchain - AWS Outage Impact Dashboard",
   description:
-    "Real-time dashboard tracking the impact of AWS outage on Solana lending protocols including MarginFi, Kamino, Solend, Drift, and Port Finance",
+    "Comprehensive analysis of AWS outage impact on Solana blockchain performance, transaction throughput, and protocol activity during December 10, 2024",
 };
 
 export default function RootLayout({
