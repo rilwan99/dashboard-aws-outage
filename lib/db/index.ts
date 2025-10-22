@@ -62,6 +62,23 @@ function initializeDatabase(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_api_logs_created_at ON api_request_logs(created_at);
     CREATE INDEX IF NOT EXISTS idx_api_logs_block_slot ON api_request_logs(block_slot);
   `);
+
+  // Create program transactions cache table
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS program_transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      block_slot INTEGER NOT NULL,
+      program_id TEXT NOT NULL,
+      transaction_count INTEGER NOT NULL,
+      created_at INTEGER DEFAULT (strftime('%s', 'now')),
+      UNIQUE(block_slot, program_id)
+    );
+  `);
+
+  database.exec(`
+    CREATE INDEX IF NOT EXISTS idx_program_tx_slot_program ON program_transactions(block_slot, program_id);
+    CREATE INDEX IF NOT EXISTS idx_program_tx_program ON program_transactions(program_id);
+  `);
 }
 
 // Database operations for block data
@@ -89,11 +106,37 @@ export interface ApiRequestLog {
   error_message?: string;
 }
 
+export interface ProgramTransactionData {
+  id?: number;
+  block_slot: number;
+  program_id: string;
+  transaction_count: number;
+  created_at?: number;
+}
+
 // Get block by slot number
 export function getBlockBySlot(slot: number): BlockData | null {
   const db = getDatabase();
   const stmt = db.prepare('SELECT * FROM solana_blocks WHERE block_slot = ?');
   return stmt.get(slot) as BlockData | null;
+}
+
+// Get block by block height
+export function getBlockByHeight(height: number): BlockData | null {
+  const db = getDatabase();
+  const stmt = db.prepare('SELECT * FROM solana_blocks WHERE block_height = ?');
+  return stmt.get(height) as BlockData | null;
+}
+
+// Get blocks in a height range
+export function getBlocksByHeightRange(startHeight: number, endHeight: number): BlockData[] {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    SELECT * FROM solana_blocks
+    WHERE block_height >= ? AND block_height <= ?
+    ORDER BY block_height ASC
+  `);
+  return stmt.all(startHeight, endHeight) as BlockData[];
 }
 
 // Insert new block data
@@ -209,6 +252,47 @@ export function getCacheStats() {
       avg_response_time_ms: Math.round(recentLogs.avg_response_time || 0),
     },
   };
+}
+
+// Program transaction cache operations
+export function getProgramTransactionCount(slot: number, programId: string): number | null {
+  const db = getDatabase();
+  const stmt = db.prepare('SELECT transaction_count FROM program_transactions WHERE block_slot = ? AND program_id = ?');
+  const result = stmt.get(slot, programId) as { transaction_count: number } | undefined;
+  return result ? result.transaction_count : null;
+}
+
+export function upsertProgramTransactionCount(slot: number, programId: string, count: number): { cacheHit: boolean } {
+  const existing = getProgramTransactionCount(slot, programId);
+
+  if (existing !== null) {
+    // Already cached
+    return { cacheHit: true };
+  }
+
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT INTO program_transactions (block_slot, program_id, transaction_count)
+    VALUES (?, ?, ?)
+    ON CONFLICT(block_slot, program_id) DO UPDATE SET transaction_count = excluded.transaction_count
+  `);
+
+  stmt.run(slot, programId, count);
+  return { cacheHit: false };
+}
+
+export function getProgramTransactionsByRange(
+  startSlot: number,
+  endSlot: number,
+  programId: string
+): ProgramTransactionData[] {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    SELECT * FROM program_transactions
+    WHERE block_slot >= ? AND block_slot <= ? AND program_id = ?
+    ORDER BY block_slot ASC
+  `);
+  return stmt.all(startSlot, endSlot, programId) as ProgramTransactionData[];
 }
 
 // Close database connection

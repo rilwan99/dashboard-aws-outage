@@ -1,12 +1,88 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { protocolMetrics, getProtocolSummary, formatNumber, formatPercentage, formatDuration } from '@/lib/blockchain-data';
-import { TrendingDown, TrendingUp, AlertCircle, Users, Zap, XCircle, CheckCircle2 } from 'lucide-react';
+import { protocolMetrics as defaultProtocolMetrics, getProtocolSummary, formatNumber, formatPercentage, formatDuration, ProtocolTransactionMetrics } from '@/lib/blockchain-data';
+import { TrendingDown, TrendingUp, AlertCircle, Users, Zap, XCircle, CheckCircle2, Loader2 } from 'lucide-react';
+
+interface JupiterAnalysisData {
+  success: boolean;
+  analysis?: {
+    disruptionDetected: boolean;
+    disruptionSeverity: string;
+    jupiterTransactionDropPercentage: string;
+    estimatedJupiterTransactionLoss: number;
+  };
+  periods?: {
+    preOutage: { metrics: any };
+    duringOutage: { metrics: any };
+    postOutage: { metrics: any };
+  };
+  metadata?: {
+    cacheStatistics: {
+      cacheHitRate: string;
+    };
+  };
+}
 
 export default function ProtocolsPage() {
+  const [jupiterData, setJupiterData] = useState<JupiterAnalysisData | null>(null);
+  const [jupiterLoading, setJupiterLoading] = useState(true);
+  const [jupiterError, setJupiterError] = useState<string | null>(null);
+  const [protocolMetrics, setProtocolMetrics] = useState<ProtocolTransactionMetrics[]>(defaultProtocolMetrics);
+
+  // Fetch Jupiter real-time data
+  useEffect(() => {
+    async function fetchJupiterData() {
+      try {
+        const response = await fetch('/api/jupiter-analysis');
+        const data: JupiterAnalysisData = await response.json();
+
+        if (data.success && data.periods && data.analysis) {
+          setJupiterData(data);
+
+          // Update Jupiter in protocol metrics with real data
+          const updatedMetrics = protocolMetrics.map(protocol => {
+            if (protocol.id === 'jupiter') {
+              const duringMetrics = data.periods.duringOutage.metrics;
+              const preMetrics = data.periods.preOutage.metrics;
+
+              // Calculate success rate from transaction data
+              const totalTx = duringMetrics.totalJupiterTransactions;
+              const successRate = totalTx > 0
+                ? ((totalTx / (totalTx + (duringMetrics.totalNetworkTransactions - totalTx))) * 100)
+                : 0;
+
+              return {
+                ...protocol,
+                totalTransactions: duringMetrics.totalJupiterTransactions,
+                transactionsChange: parseFloat(data.analysis!.jupiterTransactionDropPercentage),
+                successRate: successRate > 100 ? 100 : successRate,
+                failedTransactions: Math.max(0, preMetrics.estimatedTotalJupiterTransactions - duringMetrics.estimatedTotalJupiterTransactions),
+                status: data.analysis!.disruptionDetected ? 'degraded' as const : 'operational' as const,
+                estimatedImpact: data.analysis!.disruptionSeverity as 'low' | 'medium' | 'high' | 'critical',
+              };
+            }
+            return protocol;
+          });
+
+          setProtocolMetrics(updatedMetrics);
+        } else {
+          setJupiterError('Failed to load Jupiter data');
+        }
+      } catch (error) {
+        console.error('Error fetching Jupiter data:', error);
+        setJupiterError('Error loading Jupiter data');
+      } finally {
+        setJupiterLoading(false);
+      }
+    }
+
+    fetchJupiterData();
+  }, []);
+
   const summary = getProtocolSummary();
 
   const getStatusBadge = (status: string) => {
@@ -147,6 +223,19 @@ export default function ProtocolsPage() {
                         <div className="space-y-2">
                           <div className="flex items-center gap-3">
                             <CardTitle className="text-2xl">{protocol.name}</CardTitle>
+                            {protocol.id === 'jupiter' && jupiterLoading && (
+                              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                            )}
+                            {protocol.id === 'jupiter' && !jupiterLoading && !jupiterError && (
+                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                Live Data
+                              </Badge>
+                            )}
+                            {protocol.id === 'jupiter' && jupiterError && (
+                              <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                                Cached Data
+                              </Badge>
+                            )}
                           </div>
                           <div className="flex items-center gap-2 flex-wrap">
                             {getStatusBadge(protocol.status)}
@@ -256,6 +345,37 @@ export default function ProtocolsPage() {
                           </span>
                         </div>
                       </div>
+
+                      {/* Jupiter-specific real-time data */}
+                      {protocol.id === 'jupiter' && jupiterData && !jupiterLoading && (
+                        <div className="mt-4 pt-4 border-t border-border">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Zap className="h-4 w-4 text-blue-500" />
+                            <span className="font-semibold text-sm">Real-Time Analysis</span>
+                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
+                              Cache Hit Rate: {jupiterData.metadata?.cacheStatistics.cacheHitRate}
+                            </Badge>
+                          </div>
+                          <div className="grid md:grid-cols-3 gap-4 text-sm">
+                            <div>
+                              <span className="text-muted-foreground">Data Source:</span>
+                              <span className="ml-2 font-medium">On-chain RPC Analysis</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Estimated Loss:</span>
+                              <span className="ml-2 font-medium text-red-600">
+                                {formatNumber(jupiterData.analysis?.estimatedJupiterTransactionLoss || 0)} txs
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Disruption Severity:</span>
+                              <span className="ml-2 font-medium capitalize">
+                                {jupiterData.analysis?.disruptionSeverity}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

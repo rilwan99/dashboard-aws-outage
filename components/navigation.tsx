@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { Home, Info, Activity, Code } from 'lucide-react';
+import { Home, Info, Activity, Code, BarChart3 } from 'lucide-react';
 
 const navItems = [
   {
@@ -15,6 +15,11 @@ const navItems = [
     name: 'Protocols',
     href: '/protocols',
     icon: Activity,
+  },
+  {
+    name: 'Outage Analysis',
+    href: '/outage-analysis',
+    icon: BarChart3,
   },
   {
     name: 'API Demo',
